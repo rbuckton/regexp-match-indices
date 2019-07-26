@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "target": "es2015",
+        "lib": ["es2015", "es2018.regexp"],
+        "outDir": ".",
+        "sourceMap": true,
+        "inlineSources": true,
+        "declaration": true,
+        "strict": true
+    },
+    "files": [
+        "external.d.ts",
+        "auto.ts",
+        "implementation.ts",
+        "index.ts",
+        "polyfill.ts",
+        "shim.ts",
+        "types.ts",
+        "shim/types.ts",
+        "__tests__/measurement.ts"
+    ]
+}

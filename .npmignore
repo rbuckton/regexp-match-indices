@@ -1,0 +1,6 @@
+__tests__
+.vscode
+node_modules
+tsconfig.json
+*.ts
+!*.d.ts
