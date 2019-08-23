@@ -1,6 +1,6 @@
 {
   "name": "regexp-match-indices",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "RegExp Match Indices polyfill",
   "main": "index.js",
   "types": "index.d.ts",
