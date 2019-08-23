@@ -14,14 +14,5 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-export interface RegExpExecArray extends globalThis.RegExpExecArray {
-    indices: RegExpExecIndicesArray;
-}
-
-export interface RegExpMatchArray extends globalThis.RegExpMatchArray {
-    indices?: RegExpExecIndicesArray;
-}
-
-export interface RegExpExecIndicesArray extends Array<[number, number]> {
-    groups?: { [key: string]: [number, number] };
-}
+const nativeExec = RegExp.prototype.exec as (this: RegExp, string: string) => RegExpExecArray | null;
+export = nativeExec;

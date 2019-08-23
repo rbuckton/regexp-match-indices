@@ -3,21 +3,31 @@
         "module": "commonjs",
         "target": "es2015",
         "lib": ["es2015", "es2018.regexp"],
+        "types": ["jest-extended", "jest-expect-message"],
         "outDir": ".",
         "sourceMap": true,
         "inlineSources": true,
         "declaration": true,
-        "strict": true
+        "strict": true,
+        "noEmitOnError": true,
+        "noEmit": true
     },
     "files": [
         "external.d.ts",
         "auto.ts",
+        "config.ts",
         "implementation.ts",
         "index.ts",
+        "native.ts",
         "polyfill.ts",
         "shim.ts",
         "types.ts",
-        "shim/types.ts",
-        "__tests__/measurement.ts"
+        "shim/types.ts"
+    ],
+    "include": [
+        "__tests__/**/*.ts"
+    ],
+    "exclude": [
+        "__tests__/**/*.d.ts"
     ]
 }

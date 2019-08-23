@@ -37,3 +37,15 @@ const re = new RegExp("ab*(cd(?<Z>ef)?)");
 const result = re.exec(re, text);
 console.log(result.indices);    // [[1, 8], [4, 8], [6, 8]]
 ```
+
+## Configuration
+
+The polyfill can be run in two modes: `"lazy"` (default) or `"spec-compliant"`. In `"spec-compliant"` mode, the `indices` property is populated and stored on the result as soon as `exec()` is called. This can have a significant performance penalty for existing RegExp's that do not use this feature. By default, the polyfill operates in `"lazy"` mode, where the `indices` property is defined using a getter and is only computed when first requested.
+
+You can specify the configuration globally using the following:
+
+```js
+require("regexp-match-indices").config.mode = "spec-compliant"; // or "lazy"
+// or
+require("regexp-match-indices/config").mode = "spec-compliant"; // or "lazy"
+```

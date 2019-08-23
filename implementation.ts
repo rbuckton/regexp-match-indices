@@ -1,8 +1,26 @@
+/*!
+Copyright 2019 Ron Buckton
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 /*
  require('foo').implementation or require('foo/implementation') is a spec-compliant JS function,
  that will depend on a receiver (a “this” value) as the spec requires.
  */
 
+import config = require("./config");
+import nativeExec = require("./native");
 import { RegExpExecArray, RegExpExecIndicesArray } from "./types";
 import {
     AstNode,
@@ -20,69 +38,118 @@ import {
     TraversalHandlers
 } from "regexp-tree";
 
-const nativeExec = RegExp.prototype.exec;
 const weakMeasurementRegExp = new WeakMap<RegExp, TransformResult<AstRegExp, readonly GroupInfo[]>>();
 
 function exec(this: RegExp, string: string): RegExpExecArray | null {
-    const source = this.source;
-    const flags = this.flags;
-    const lastIndex = this.lastIndex;
-    const result = nativeExec.call(this, string);
+    return config.mode === "spec-compliant"
+        ? execSpecCompliant(this, string)
+        : execLazy(this, string);
+}
+
+function execLazy(regexp: RegExp, string: string) {
+    const index = regexp.lastIndex;
+    const result = nativeExec.call(regexp, string);
     if (result === null) return null;
 
-    const hasGroups = !!result.groups;
-    const matchStart = result.index;
-    const matchEnd = matchStart + result[0].length;
-
-    // for performance reasons, we defer getting the indices until later
+    // For performance reasons, we defer computing the indices until later. This isn't spec compliant,
+    // but once we compute the indices we convert the result to a data-property.
     let indicesArray: RegExpExecIndicesArray | undefined;
     Object.defineProperty(result, "indices", {
         enumerable: true,
         configurable: true,
-        get: () => {
-            if (indicesArray !== undefined) {
-                return indicesArray;
+        get() {
+            if (indicesArray === undefined) {
+                const { measurementRegExp, groupInfos } = getMeasurementRegExp(regexp);
+                measurementRegExp.lastIndex = index;
+                const measuredResult = nativeExec.call(measurementRegExp, string);
+                if (measuredResult === null) throw new TypeError();
+                makeDataProperty(result, "indices", indicesArray = makeIndicesArray(measuredResult, groupInfos));
             }
-
-            let transformed = weakMeasurementRegExp.get(this);
-            if (!transformed) {
-                transformed = transformMeasurementGroups(parse(`/${source}/${flags}`));
-                weakMeasurementRegExp.set(this, transformed);
-            }
-
-            const groupInfos = transformed.getExtra();
-            const newRegExp = transformed.toRegExp();
-            newRegExp.lastIndex = lastIndex;
-
-            const measuredResult = nativeExec.call(newRegExp, string);
-            if (measuredResult === null) throw new TypeError();
-
-            const newResult = [] as RegExpExecIndicesArray;
-            const groups: Record<string, [number, number]> | undefined = hasGroups ? {} : undefined;
-            newResult.groups = groups;
-            newResult[0] = [matchStart, matchEnd];
-
-            for (const groupInfo of groupInfos) {
-                let startIndex = matchStart;
-                if (groupInfo.measurementGroups) {
-                    for (const measurementGroup of groupInfo.measurementGroups) {
-                        startIndex += measuredResult[measurementGroup].length;
-                    }
-                }
-
-                const endIndex = startIndex + measuredResult[groupInfo.newGroupNumber].length;
-                const indices: [number, number] = [startIndex, endIndex];
-                newResult[groupInfo.oldGroupNumber] = indices;
-                if (groups && groupInfo.groupName !== undefined) {
-                    groups[groupInfo.groupName] = indices;
-                }
-            }
-
-            return indicesArray = newResult;
+            return indicesArray;
+        },
+        set(value) {
+            makeDataProperty(result, "indices", value);
         }
     });
+    return result;
+}
 
-    return result as RegExpExecArray;
+function execSpecCompliant(regexp: RegExp, string: string) {
+    const { measurementRegExp, groupInfos } = getMeasurementRegExp(regexp);
+    measurementRegExp.lastIndex = regexp.lastIndex;
+
+    const measuredResult = nativeExec.call(measurementRegExp, string);
+    if (measuredResult === null) return null;
+
+    regexp.lastIndex = measurementRegExp.lastIndex;
+
+    const result = [] as unknown as RegExpExecArray;
+    makeDataProperty(result, 0, measuredResult[0]);
+
+    for (const groupInfo of groupInfos) {
+        makeDataProperty(result, groupInfo.oldGroupNumber, measuredResult[groupInfo.newGroupNumber]);
+    }
+
+    makeDataProperty(result, "index", measuredResult.index);
+    makeDataProperty(result, "input", measuredResult.input);
+    makeDataProperty(result, "groups", measuredResult.groups);
+    makeDataProperty(result, "indices", makeIndicesArray(measuredResult, groupInfos));
+    return result;
+}
+
+function getMeasurementRegExp(regexp: RegExp) {
+    let transformed = weakMeasurementRegExp.get(regexp);
+    if (!transformed) {
+        transformed = transformMeasurementGroups(parse(`/${regexp.source}/${regexp.flags}`));
+        weakMeasurementRegExp.set(regexp, transformed);
+    }
+    const groupInfos = transformed.getExtra();
+    const measurementRegExp = transformed.toRegExp();
+    return { measurementRegExp, groupInfos };
+}
+
+function makeIndicesArray(measuredResult: RegExpExecArray, groupInfos: readonly GroupInfo[]) {
+    const matchStart = measuredResult.index;
+    const matchEnd = matchStart + measuredResult[0].length;
+    const hasGroups = !!measuredResult.groups;
+    const indicesArray = [] as RegExpExecIndicesArray;
+    const groups: Record<string, [number, number]> | undefined = hasGroups ? Object.create(null) : undefined;
+    makeDataProperty(indicesArray, 0, [matchStart, matchEnd]);
+
+    for (const groupInfo of groupInfos) {
+        let indices: [number, number] | undefined;
+        if (measuredResult[groupInfo.newGroupNumber] !== undefined) {
+            let startIndex = matchStart;
+            if (groupInfo.measurementGroups) {
+                for (const measurementGroup of groupInfo.measurementGroups) {
+                    startIndex += measuredResult[measurementGroup].length;
+                }
+            }
+
+            const endIndex = startIndex + measuredResult[groupInfo.newGroupNumber].length;
+            indices = [startIndex, endIndex];
+        }
+        makeDataProperty(indicesArray, groupInfo.oldGroupNumber, indices!);
+        if (groups && groupInfo.groupName !== undefined) {
+            makeDataProperty(groups, groupInfo.groupName, indices!);
+        }
+    }
+
+    makeDataProperty(indicesArray, "groups", groups);
+    return indicesArray;
+}
+
+function makeDataProperty<T, K extends keyof T>(result: T, key: K, value: T[K]) {
+    const existingDesc = Object.getOwnPropertyDescriptor(result, key);
+    if (existingDesc ? existingDesc.configurable : Object.isExtensible(result)) {
+        const newDesc = {
+            enumerable: existingDesc ? existingDesc.enumerable : true,
+            configurable: existingDesc ? existingDesc.configurable : true,
+            writable: true,
+            value
+        };
+        Object.defineProperty(result, key, newDesc);
+    }
 }
 
 interface GroupInfo {
