@@ -34,7 +34,7 @@ require("regexp-match-indices/auto");
 
 const text = "zabbcdef";
 const re = new RegExp("ab*(cd(?<Z>ef)?)");
-const result = re.exec(re, text);
+const result = re.exec(text);
 console.log(result.indices);    // [[1, 8], [4, 8], [6, 8]]
 ```
 
